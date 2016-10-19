@@ -111,7 +111,7 @@ public:
     if (verbose)
       {
         if (use_partno)
-          std::cout << "Use partno-logic!!" << std::endl;
+          std::cout << "Use partsno-logic!!" << std::endl;
       }
 
     if (!use_partno)
@@ -1052,7 +1052,7 @@ configs read_config (std::string configfile)
               cfg.scale = std::stoi (value);
             }
           else
-          if (key == "use_partno")
+          if (key == "partsno-logic")
             {
               if (value == "true" || value == "True")
                 cfg.use_partno = 1;
@@ -1069,9 +1069,9 @@ configs read_config (std::string configfile)
 
 int input_consistency_check (configs cfg)
 {
-  if (!(get_words_number (cfg.securities) == 5 || get_words_number (cfg.loans) == 4) && cfg.use_partno)
+  if ((get_words_number (cfg.securities) != 5 || get_words_number (cfg.loans) != 4) && cfg.use_partno)
     {
-      printf ("Please specify partno data in input files to use partno-logic\n");
+      printf ("Please specify partno data in input files to use partsno-logic\n");
       return -1;
     }
 
@@ -1083,7 +1083,14 @@ int main (int /*argc*/, char **/*argv*/)
   auto cfg = read_config ("config.txt");
 
   if (input_consistency_check (cfg))
-    return 0;
+    {
+      char c;
+      if (scanf ("%c", &c))
+        {
+        }
+
+      return 0;
+    }
 
   // set DEBUG variable
   global_io_verbose = cfg.verbose;
