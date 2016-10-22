@@ -101,7 +101,7 @@ class loans_matcher
   };
 
 public:
-  loans_matcher (int scale = 0, double sigma_error = 0.3, double epsilon = 1e-6, int use_partno = false) :
+  loans_matcher (int scale = 0, double sigma_error = 0.5, double epsilon = 1e-6, int use_partno = false) :
     scale (scale),
     sigma_error (sigma_error),
     epsilon (epsilon),
@@ -1014,7 +1014,7 @@ void print_result_to_stdout (unsigned int /*i_security*/, const std::vector<loan
 
 struct configs
 {
-  double sigma_error = 0.3;
+  double sigma_error = 0.5;
   double epsilon = 1e-6;
   int scale = 0;
   int use_partno = 0;
