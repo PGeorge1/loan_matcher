@@ -8,9 +8,24 @@
 #include <sstream>
 #include <vector>
 #include "math.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /// DEBUG VAR
 int global_io_verbose = 0;
+FILE *debug_fp;
+
+void print_output_to_stdout_and_file(const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vprintf(fmt, ap);
+  va_end(ap);
+  va_start(ap, fmt);
+  vfprintf(debug_fp, fmt, ap);
+  va_end(ap);
+}
 
 std::string fix_string (std::string value)
 {
@@ -221,13 +236,13 @@ private:
       {
         if (removed.size ())
           {
-            printf ("Removing impossible loans. Impossible loans: \n");
+            print_output_to_stdout_and_file ("Removing impossible loans. Impossible loans: \n");
             for (auto i : removed)
               {
                 if (verbose)
-                  printf ("%d (%.2lf, %d); ", loan_props[i].loan_id, loan_props[i].amount, loan_props[i].partno);
+                  print_output_to_stdout_and_file ("%d (%.2lf, %d); ", loan_props[i].loan_id, loan_props[i].amount, loan_props[i].partno);
               }
-            printf ("\n");
+            print_output_to_stdout_and_file ("\n");
           }
       }
   }
@@ -253,7 +268,7 @@ private:
 
     if (verbose)
       {
-        printf ("Max = %d\n", (int)max_possible_total_amount);
+        print_output_to_stdout_and_file ("Max = %d\n", (int)max_possible_total_amount);
       }
   }
 
@@ -271,7 +286,7 @@ private:
     sigma = (int) (max * sigma_error + 0.5);
     if (verbose)
       {
-        printf ("Sigma = %d\n", (int)sigma);
+        print_output_to_stdout_and_file ("Sigma = %d\n", (int)sigma);
       }
   }
 
@@ -295,7 +310,7 @@ private:
 
     if (verbose)
       {
-        printf ("Scale = %d\n", (int)scale);
+        print_output_to_stdout_and_file ("Scale = %d\n", (int)scale);
       }
   }
 
@@ -316,14 +331,14 @@ private:
       {
         if (loan_sums[i].size ())
           {
-            printf ("For pack %d with amount %.2lf found loans:\n", i, loan_pack_props[i].amount);
+            print_output_to_stdout_and_file ("For pack %d with amount %.2lf found loans:\n", i, loan_pack_props[i].amount);
             for (const auto &item_vector : loan_sums[i])
               {
                 for (auto item : item_vector)
                   {
-                    printf ("%d ", loan_props[loan_mapping[item]].loan_id);
+                    print_output_to_stdout_and_file ("%d ", loan_props[loan_mapping[item]].loan_id);
                   }
-                printf ("\n");
+                print_output_to_stdout_and_file ("\n");
               }
           }
       }
@@ -337,7 +352,7 @@ private:
   {
     if (verbose)
       {
-        printf ("Check result for consistency: eps = %lf\n", epsilon);
+        print_output_to_stdout_and_file ("Check result for consistency: eps = %lf\n", epsilon);
       }
     int total_removed = 0;
     for (unsigned int i = 0; i < loan_pack_props.size (); ++i)
@@ -367,7 +382,7 @@ private:
       }
     if (verbose)
       {
-        printf ("Total removed after checking: %d\n\n", total_removed);
+        print_output_to_stdout_and_file ("Total removed after checking: %d\n\n", total_removed);
       }
   }
 
@@ -446,11 +461,11 @@ private:
       {
         for (unsigned int i = 0; i < max_possible_total_amount; ++i)
           {
-            printf ("(%d, %d) ", matrix[max_possible_total_amount * i_loan + i].has_sum, (int) matrix[max_possible_total_amount * i_loan + i].previous_indices.size ());
+            print_output_to_stdout_and_file ("(%d, %d) ", matrix[max_possible_total_amount * i_loan + i].has_sum, (int) matrix[max_possible_total_amount * i_loan + i].previous_indices.size ());
           }
-        printf ("\n");
+        print_output_to_stdout_and_file ("\n");
       }
-    printf ("\n");
+    print_output_to_stdout_and_file ("\n");
   }
 
 
@@ -541,7 +556,7 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt (std::stri
   FILE * fp_securities = fopen (datafile.c_str (), "r");
   if (!fp_securities)
     {
-      printf ("No such file or directory: %s\n", datafile.c_str ());
+      print_output_to_stdout_and_file ("No such file or directory: %s\n", datafile.c_str ());
       return securities;
     }
 
@@ -563,7 +578,7 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt (std::stri
               if (feof (fp_securities))
                 break;
               if (row_counter != 1)
-                printf ("%s: incorrect data at row %d, skipping! \n", datafile.c_str (), row_counter);
+                print_output_to_stdout_and_file ("%s: incorrect data at row %d, skipping! \n", datafile.c_str (), row_counter);
               r = fgets (tmp, sizeof (tmp), fp_securities);
               continue;
             }
@@ -575,7 +590,7 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt (std::stri
               if (feof (fp_securities))
                 break;
               if (row_counter != 1)
-                printf ("%s: incorrect data at row %d, skipping! \n", datafile.c_str (), row_counter);
+                print_output_to_stdout_and_file ("%s: incorrect data at row %d, skipping! \n", datafile.c_str (), row_counter);
               r = fgets (tmp, sizeof (tmp), fp_securities);
               continue;
             }
@@ -583,7 +598,7 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt (std::stri
 
       if (fscanf (fp_securities, "%c", &c) < 1 || (c != '\n' && c != '\r'))
         {
-          printf ("%s: incorrect data format at row %d, skipping! \n", datafile.c_str (), row_counter);
+          print_output_to_stdout_and_file ("%s: incorrect data format at row %d, skipping! \n", datafile.c_str (), row_counter);
           r = fgets(tmp, sizeof (tmp), fp_securities);
           continue;
         }
@@ -596,16 +611,16 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt (std::stri
       if (global_io_verbose)
         {
           if (!use_partno)
-            printf ("%d %d %lf %s\n", security_id, loan_count, amount, tmp);
+            print_output_to_stdout_and_file ("%d %d %lf %s\n", security_id, loan_count, amount, tmp);
           else
-            printf ("%d %d %lf %d %s\n", security_id, loan_count, amount, partno, tmp);
+            print_output_to_stdout_and_file ("%d %d %lf %d %s\n", security_id, loan_count, amount, partno, tmp);
         }
 
       securities[security_id].push_back (loan_pack_properties (amount, loan_count, partno, std::string (tmp)));
     }
   fclose (fp_securities);
   if (global_io_verbose)
-    printf ("\n");
+    print_output_to_stdout_and_file ("\n");
   return securities;
 }
 
@@ -616,7 +631,7 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt (std::string datafil
   FILE * fp_loans = fopen (datafile.c_str (), "r");
   if (!fp_loans)
     {
-      printf ("No such file or directory %s:\n", datafile.c_str ());
+      print_output_to_stdout_and_file ("No such file or directory %s:\n", datafile.c_str ());
       return loans;
     }
 
@@ -640,7 +655,7 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt (std::string datafil
                 break;
 
               if (row_counter != 1)
-                printf ("%s: incorrect data at row %d, skipping! \n", datafile.c_str (), row_counter);
+                print_output_to_stdout_and_file ("%s: incorrect data at row %d, skipping! \n", datafile.c_str (), row_counter);
               r = fgets (tmp, sizeof(tmp), fp_loans);
                 continue;
             }
@@ -653,7 +668,7 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt (std::string datafil
                 break;
 
               if (row_counter != 1)
-                printf ("%s: incorrect data at row %d, skipping! \n", datafile.c_str (), row_counter);
+                print_output_to_stdout_and_file ("%s: incorrect data at row %d, skipping! \n", datafile.c_str (), row_counter);
               r = fgets (tmp, sizeof(tmp), fp_loans);
                 continue;
             }
@@ -661,7 +676,7 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt (std::string datafil
 
       if (fscanf (fp_loans, "%c", &c) < 1 || (c != '\n' && c != '\r'))
         {
-          printf ("%s: incorrect data format at row %d, skipping! \n", datafile.c_str (), row_counter);
+          print_output_to_stdout_and_file ("%s: incorrect data format at row %d, skipping! \n", datafile.c_str (), row_counter);
           r = fgets (tmp, sizeof(tmp), fp_loans);
           continue;
         }
@@ -670,9 +685,9 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt (std::string datafil
       if (global_io_verbose)
         {
           if (!use_partno)
-            printf ("%d %d %lf\n", security_id, loan_id, amount);
+            print_output_to_stdout_and_file ("%d %d %lf\n", security_id, loan_id, amount);
           else
-            printf ("%d %d %lf %d\n", security_id, loan_id, amount, partno);
+            print_output_to_stdout_and_file ("%d %d %lf %d\n", security_id, loan_id, amount, partno);
         }
 
       if (security_id >= (int)loans.size ())
@@ -684,7 +699,7 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt (std::string datafil
 
   fclose (fp_loans);
   if (global_io_verbose)
-    printf ("\n");
+    print_output_to_stdout_and_file ("\n");
   return loans;
 }
 
@@ -760,11 +775,11 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_csv (std::stri
         {
           if (!use_partno)
             {
-              printf ("%d %d %lf %s\n", security_id, loan_count, amount, state.c_str ());
+              print_output_to_stdout_and_file ("%d %d %lf %s\n", security_id, loan_count, amount, state.c_str ());
             }
           else
             {
-              printf ("%d %d %lf %d %s\n", security_id, loan_count, amount, partno, state.c_str ());
+              print_output_to_stdout_and_file ("%d %d %lf %d %s\n", security_id, loan_count, amount, partno, state.c_str ());
             }
         }
 
@@ -779,7 +794,7 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_csv (std::stri
   file.close ();
 
   if (global_io_verbose)
-    printf ("\n");
+    print_output_to_stdout_and_file ("\n");
   return securities;
 }
 
@@ -845,9 +860,9 @@ std::vector<std::vector<loan_properties>> read_loans_as_csv (std::string datafil
       if (global_io_verbose)
         {
           if (!use_partno)
-            printf ("%d %d %lf\n", security_id, loan_id, amount);
+            print_output_to_stdout_and_file ("%d %d %lf\n", security_id, loan_id, amount);
           else
-            printf ("%d %d %lf %d\n", security_id, loan_id, amount, partno);
+            print_output_to_stdout_and_file ("%d %d %lf %d\n", security_id, loan_id, amount, partno);
         }
       if (security_id >= (int)loans.size ())
         {
@@ -857,7 +872,7 @@ std::vector<std::vector<loan_properties>> read_loans_as_csv (std::string datafil
     }
   file.close ();
   if (global_io_verbose)
-    printf ("\n");
+    print_output_to_stdout_and_file ("\n");
 
   return loans;
 }
@@ -904,33 +919,45 @@ int count_words_in_string (const char* str)
 
 int get_words_number (std::string datafile)
 {
-  FILE *fp = fopen (datafile.c_str (), "r");
-  if (!fp)
-    return 0;
+  if (get_extension (datafile) == "txt")
+    {
+      FILE *fp = fopen (datafile.c_str (), "r");
+      if (!fp)
+        return 0;
 
-  char tmp[1024];
-  if (!fgets (tmp, sizeof(tmp), fp))
-    return 0;
-  fclose (fp);
-
-  return count_words_in_string (tmp);
+      char tmp[1024];
+      if (!fgets (tmp, sizeof(tmp), fp))
+        return 0;
+      fclose (fp);
+      return count_words_in_string (tmp);
+    }
+  else
+  if (get_extension (datafile) == "csv")
+    {
+      std::fstream file (datafile.c_str (), std::ios::in);
+      typedef std::vector<std::vector<std::string>> csvVector;
+      csvVector csvData;
+      readCSV (file, csvData);
+      return csvData[0].size ();
+    }
+  return 0;
 }
 
 std::vector<std::vector<loan_pack_properties>> read_securities (std::string datafile)
 {
-  bool use_partno = get_words_number (datafile) == 5 ? true : false;
-
   std::string ext = get_extension (datafile);
   if (global_io_verbose)
-    printf ("Reading input securities:\n");
+    print_output_to_stdout_and_file ("Reading input securities:\n");
 
   if (ext == "txt")
     {
+      bool use_partno = get_words_number (datafile) == 5 ? true : false;
       return read_securities_as_txt (datafile, use_partno);
     }
   else
   if (ext == "csv")
     {
+      bool use_partno = get_words_number (datafile) == 5 ? true : false;
       return read_securities_as_csv (datafile, use_partno);
     }
   else
@@ -942,18 +969,19 @@ std::vector<std::vector<loan_pack_properties>> read_securities (std::string data
 
 std::vector<std::vector<loan_properties>> read_loans (std::string datafile)
 {
-  bool use_partno = get_words_number (datafile) == 4 ? true : false;
   std::string ext = get_extension (datafile);
   if (global_io_verbose)
-    printf ("Reading input loans:\n");
+    print_output_to_stdout_and_file ("Reading input loans:\n");
 
   if (ext == "txt")
     {
+      bool use_partno = get_words_number (datafile) == 4 ? true : false;
       return read_loans_as_txt (datafile, use_partno);
     }
   else
   if (ext == "csv")
     {
+      bool use_partno = get_words_number (datafile) == 4 ? true : false;
       return read_loans_as_csv (datafile, use_partno);
     }
   else
@@ -965,22 +993,22 @@ std::vector<std::vector<loan_properties>> read_loans (std::string datafile)
 
 void print_result_to_stdout (unsigned int /*i_security*/, const std::vector<loan_predicted_state_properties> &result)
 {
-  printf ("\nResult:\n");
+  print_output_to_stdout_and_file ("\nResult:\n");
   for (unsigned int i = 0; i < result.size (); ++i)
     {
-      printf ("%d: ", result[i].loan_id);
+      print_output_to_stdout_and_file ("%d: ", result[i].loan_id);
       if (result[i].state.size ())
         {
           for (unsigned int item  = 0; item < result[i].state.size (); ++item)
             {
-              printf ("%s P = %lf;  ", result[i].state[item].c_str (), result[i].probability[item]);
+              print_output_to_stdout_and_file ("%s P = %lf;  ", result[i].state[item].c_str (), result[i].probability[item]);
             }
         }
       else
         {
-          printf ("None");
+          print_output_to_stdout_and_file ("None");
         }
-      printf ("\n");
+      print_output_to_stdout_and_file ("\n");
     }
 }
 
@@ -992,6 +1020,7 @@ struct configs
   int use_partno = 0;
   std::string securities = "securities.txt";
   std::string loans = "loans.txt";
+  std::string output = "output.txt";
   bool verbose = true;
 };
 
@@ -1017,7 +1046,11 @@ configs read_config (std::string configfile)
       if( std::getline(is_line, value) )
         {
           value = fix_string (value);
-
+          if (key == "output")
+            {
+              cfg.output = value;
+            }
+          else
           if (key == "securities")
             {
               cfg.securities = value;
@@ -1071,11 +1104,20 @@ int input_consistency_check (configs cfg)
 {
   if ((get_words_number (cfg.securities) != 5 || get_words_number (cfg.loans) != 4) && cfg.use_partno)
     {
-      printf ("Please specify partno data in input files to use partsno-logic\n");
+      print_output_to_stdout_and_file ("Please specify partno data in input files to use partsno-logic\n");
       return -1;
     }
 
   return 0;
+}
+
+void windows_hack_prevent_closing_console ()
+{
+  /// hack for windows. do not close terminal to early
+  char c;
+  if (scanf ("%c", &c))
+    {
+    }
 }
 
 int main (int /*argc*/, char **/*argv*/)
@@ -1084,13 +1126,11 @@ int main (int /*argc*/, char **/*argv*/)
 
   if (input_consistency_check (cfg))
     {
-      char c;
-      if (scanf ("%c", &c))
-        {
-        }
-
+      windows_hack_prevent_closing_console ();
       return 0;
     }
+
+  debug_fp = fopen (cfg.output.c_str (), "w");
 
   // set DEBUG variable
   global_io_verbose = cfg.verbose;
@@ -1105,17 +1145,14 @@ int main (int /*argc*/, char **/*argv*/)
     {
       if (!securities[i_security].size ())
         continue;
-      printf ("-----------------SECURITY %d---------------------\n\n", i_security);
+      print_output_to_stdout_and_file ("-----------------SECURITY %d---------------------\n\n", i_security);
       print_result_to_stdout (i_security, ln_mtch.fit_predict (loans[i_security], securities[i_security], 0, cfg.verbose));
-      printf ("\n\n");
+      print_output_to_stdout_and_file ("\n\n");
     }
 
+  print_output_to_stdout_and_file ("End! Have a nice day!:)\n");
+  fclose (debug_fp);
 
-  /// hack for windows. do not close terminal to early
-  char c;
-  if (scanf ("%c", &c))
-    {
-    }
-
+  windows_hack_prevent_closing_console ();
   return 0;
 }
