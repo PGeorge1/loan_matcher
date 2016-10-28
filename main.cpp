@@ -37,7 +37,7 @@ void print_output_to_stdout_and_file_txt(const char *fmt, ...)
 void print_output_to_stdout_and_file_csv(const char *fmt, ...)
 {
 	va_list ap;
-	
+
 	va_start(ap, fmt);
 	vfprintf(csv_debug_fp, fmt, ap);
 	va_end(ap);
@@ -90,13 +90,13 @@ public:
 class loan_properties
 {
 public:
-	loan_properties(int loan_id, int security_id, double amount, int partno) : loan_id(loan_id), security_id(security_id), amount(amount), partno(partno)
+	loan_properties(std::string loan_id, std::string security_id, double amount, int partno) : loan_id(loan_id), security_id(security_id), amount(amount), partno(partno)
 	{
 
 	}
 
-	int loan_id;
-	int security_id;
+	std::string loan_id;
+	std::string security_id;
 	double amount = 0.;
 	int partno = 0;
 };
@@ -104,8 +104,8 @@ public:
 class loan_predicted_state_properties
 {
 public:
-	int loan_id;
-	int security_id;
+	std::string loan_id;
+	std::string security_id;
 	std::vector<std::string> state;
 	std::vector<double> probability;
 };
@@ -219,20 +219,25 @@ private:
 
 	void get_all_possible_loans_for_amount_packs(const std::vector<loan_pack_properties> &loan_pack_props)
 	{
+		loan_sums.resize(loan_pack_props.size());
 		if (!use_partno)
 		{
-			for (const loan_pack_properties &loan_pack : loan_pack_props)
+#pragma loop(hint_parallel(8))
+			for (int i = 0; i < loan_pack_props.size(); ++i)
 			{
-				loan_sums.push_back(get_loans_for_total_amount(amount_range(loan_pack.amount), loan_pack.loan_count));
+				const loan_pack_properties &loan_pack = loan_pack_props[i];
+				loan_sums[i] = get_loans_for_total_amount(amount_range(loan_pack.amount), loan_pack.loan_count);
 			}
 		}
 		else
 		{
-			for (const loan_pack_properties &loan_pack : loan_pack_props)
+#pragma loop(hint_parallel(8))
+			for (int i = 0; i < loan_pack_props.size(); ++i)
 			{
+				const loan_pack_properties &loan_pack = loan_pack_props[i];
 				std::vector<int> range;
 				range.push_back(loan_pack.partno);
-				loan_sums.push_back(get_loans_for_total_amount(range, loan_pack.loan_count));
+				loan_sums[i] = get_loans_for_total_amount(range, loan_pack.loan_count);
 			}
 		}
 	}
@@ -264,7 +269,7 @@ private:
 				for (auto i : removed)
 				{
 					if (verbose)
-						print_output_to_stdout_and_file_txt("%d (%.2lf, %d); ", loan_props[i].loan_id, loan_props[i].amount, loan_props[i].partno);
+						print_output_to_stdout_and_file_txt("%s (%.2lf, %d); ", loan_props[i].loan_id.c_str(), loan_props[i].amount, loan_props[i].partno);
 				}
 				print_output_to_stdout_and_file_txt("\n");
 			}
@@ -360,7 +365,7 @@ private:
 				{
 					for (auto item : item_vector)
 					{
-						print_output_to_stdout_and_file_txt("%d ", loan_props[loan_mapping[item]].loan_id);
+						print_output_to_stdout_and_file_txt("%s ", loan_props[loan_mapping[item]].loan_id.c_str());
 					}
 					print_output_to_stdout_and_file_txt("\n");
 				}
@@ -500,12 +505,14 @@ private:
 		matrix.reset(new matrix_item[loan_values.size() * max_possible_total_amount]);
 
 		/// Initialize
+# pragma loop(hint_parallel(8))
 		for (unsigned int i_loan = 0; i_loan < loan_values.size(); ++i_loan)
 		{
 			matrix_item &item = matrix[max_possible_total_amount * i_loan + loan_values[i_loan]];
 			item.has_sum = true;
 		}
 
+# pragma loop(hint_parallel(8))
 		/// Compute
 		for (unsigned int i_loan = 1; i_loan < loan_values.size(); ++i_loan)
 		{
@@ -574,9 +581,9 @@ private:
 
 };
 
-std::vector<std::vector<loan_pack_properties>> read_securities_as_txt(std::string datafile, bool use_partno)
+std::map<std::string, std::vector<loan_pack_properties>> read_securities_as_txt(std::string datafile, bool use_partno)
 {
-	std::vector<std::vector<loan_pack_properties>> securities;
+	std::map<std::string, std::vector<loan_pack_properties>> securities;
 
 	FILE * fp_securities = fopen(datafile.c_str(), "r");
 	if (!fp_securities)
@@ -594,11 +601,12 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt(std::strin
 	while (!feof(fp_securities))
 	{
 		row_counter++;
-		int security_id, loan_count, partno = 0;
+		char security_id[256];
+		int loan_count, partno = 0;
 		double amount;
 		if (!use_partno)
 		{
-			if (fscanf(fp_securities, "%d %d %lf %s", &security_id, &loan_count, &amount, tmp) < 4)
+			if (fscanf(fp_securities, "%s %d %lf %s", security_id, &loan_count, &amount, tmp) < 4)
 			{
 				if (feof(fp_securities))
 					break;
@@ -610,7 +618,7 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt(std::strin
 		}
 		else
 		{
-			if (fscanf(fp_securities, "%d %d %lf %d %s", &security_id, &loan_count, &amount, &partno, tmp) < 5)
+			if (fscanf(fp_securities, "%s %d %lf %d %s", security_id, &loan_count, &amount, &partno, tmp) < 5)
 			{
 				if (feof(fp_securities))
 					break;
@@ -628,20 +636,15 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt(std::strin
 			continue;
 		}
 
-		if (security_id >= (int)securities.size())
-		{
-			securities.resize(security_id + 1);
-		}
-
 		if (global_io_verbose)
 		{
 			if (!use_partno)
-				print_output_to_stdout_and_file_txt("%d %d %lf %s\n", security_id, loan_count, amount, tmp);
+				print_output_to_stdout_and_file_txt("%s %d %lf %s\n", security_id, loan_count, amount, tmp);
 			else
-				print_output_to_stdout_and_file_txt("%d %d %lf %d %s\n", security_id, loan_count, amount, partno, tmp);
+				print_output_to_stdout_and_file_txt("%s %d %lf %d %s\n", security_id, loan_count, amount, partno, tmp);
 		}
 
-		securities[security_id].push_back(loan_pack_properties(amount, loan_count, partno, std::string(tmp)));
+		securities[std::string(security_id)].push_back(loan_pack_properties(amount, loan_count, partno, std::string(tmp)));
 	}
 	fclose(fp_securities);
 	if (global_io_verbose)
@@ -649,9 +652,9 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_txt(std::strin
 	return securities;
 }
 
-std::vector<std::vector<loan_properties>> read_loans_as_txt(std::string datafile, bool use_partno)
+std::map<std::string, std::vector<loan_properties>> read_loans_as_txt(std::string datafile, bool use_partno)
 {
-	std::vector<std::vector<loan_properties>> loans;
+	std::map<std::string, std::vector<loan_properties>> loans;
 
 	FILE * fp_loans = fopen(datafile.c_str(), "r");
 	if (!fp_loans)
@@ -669,12 +672,13 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt(std::string datafile
 	while (!feof(fp_loans))
 	{
 		row_counter++;
-		int loan_id, security_id, partno = 0;
+		char loan_id[256], security_id[256];
+		int partno = 0;
 		double amount;
 
 		if (!use_partno)
 		{
-			if (fscanf(fp_loans, "%s %s %lf", &loan_id, &security_id, &amount) < 3)
+			if (fscanf(fp_loans, "%s %s %lf", loan_id, security_id, &amount) < 3)
 			{
 				if (feof(fp_loans))
 					break;
@@ -687,7 +691,7 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt(std::string datafile
 		}
 		else
 		{
-			if (fscanf(fp_loans, "%s %s %lf %d", &loan_id, &security_id, &amount, &partno) < 4)
+			if (fscanf(fp_loans, "%s %s %lf %d", loan_id, security_id, &amount, &partno) < 4)
 			{
 				if (feof(fp_loans))
 					break;
@@ -710,16 +714,12 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt(std::string datafile
 		if (global_io_verbose)
 		{
 			if (!use_partno)
-				print_output_to_stdout_and_file_txt("%d %d %lf\n", security_id, loan_id, amount);
+				print_output_to_stdout_and_file_txt("%s %s %lf\n", security_id, loan_id, amount);
 			else
-				print_output_to_stdout_and_file_txt("%d %d %lf %d\n", security_id, loan_id, amount, partno);
+				print_output_to_stdout_and_file_txt("%s %s %lf %d\n", security_id, loan_id, amount, partno);
 		}
 
-		if (security_id >= (int)loans.size())
-		{
-			loans.resize(security_id + 1);
-		}
-		loans[security_id].push_back(loan_properties(loan_id, security_id, amount, partno));
+		loans[std::string(security_id)].push_back(loan_properties(std::string(loan_id), std::string(security_id), amount, partno));
 	}
 
 	fclose(fp_loans);
@@ -729,9 +729,9 @@ std::vector<std::vector<loan_properties>> read_loans_as_txt(std::string datafile
 }
 
 
-std::vector<std::vector<loan_pack_properties>> read_securities_as_csv(std::string datafile, bool use_partno)
+std::map<std::string, std::vector<loan_pack_properties>> read_securities_as_csv(std::string datafile, bool use_partno)
 {
-	std::vector<std::vector<loan_pack_properties>> securities;
+	std::map<std::string, std::vector<loan_pack_properties>> securities;
 	std::fstream file(datafile.c_str(), std::ios::in);
 
 	if (!file.is_open())
@@ -756,7 +756,7 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_csv(std::strin
 			continue;
 		}
 
-		int security_id;
+		std::string security_id;
 		int loan_count, partno = 0;
 		double amount;
 		std::string state;
@@ -764,14 +764,14 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_csv(std::strin
 		{
 			if (!use_partno)
 			{
-				security_id = std::stoi(string[0]);
+				security_id = string[0];
 				loan_count = std::stoi(string[1]);
 				amount = std::stod(string[2]);
 				state = string[3];
 			}
 			else
 			{
-				security_id = std::stoi(string[0]);
+				security_id = string[0];
 				loan_count = std::stoi(string[1]);
 				amount = std::stod(string[2]);
 				partno = std::stoi(string[3]);
@@ -800,18 +800,12 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_csv(std::strin
 		{
 			if (!use_partno)
 			{
-				print_output_to_stdout_and_file_txt("%d %d %lf %s\n", security_id, loan_count, amount, state.c_str());
+				print_output_to_stdout_and_file_txt("%s %d %lf %s\n", security_id.c_str(), loan_count, amount, state.c_str());
 			}
 			else
 			{
-				print_output_to_stdout_and_file_txt("%d %d %lf %d %s\n", security_id, loan_count, amount, partno, state.c_str());
+				print_output_to_stdout_and_file_txt("%s %d %lf %d %s\n", security_id.c_str(), loan_count, amount, partno, state.c_str());
 			}
-		}
-
-
-		if (security_id >= (int)securities.size())
-		{
-			securities.resize(security_id + 1);
 		}
 
 		securities[security_id].push_back(loan_pack_properties(amount, loan_count, partno, state));
@@ -824,9 +818,9 @@ std::vector<std::vector<loan_pack_properties>> read_securities_as_csv(std::strin
 }
 
 
-std::vector<std::vector<loan_properties>> read_loans_as_csv(std::string datafile, bool use_partno)
+std::map<std::string, std::vector<loan_properties>> read_loans_as_csv(std::string datafile, bool use_partno)
 {
-	std::vector<std::vector<loan_properties>> loans;
+	std::map<std::string, std::vector<loan_properties>> loans;
 	std::fstream file(datafile.c_str(), std::ios::in);
 
 	if (!file.is_open())
@@ -851,13 +845,14 @@ std::vector<std::vector<loan_properties>> read_loans_as_csv(std::string datafile
 			print_output_to_stdout_and_file_txt("%s: incorrect data at row %d, skipping! \n", datafile.c_str(), row_counter);
 			continue;
 		}
-		int loan_id;
-		int security_id, partno = 0;
+		std::string loan_id;
+		std::string security_id;
+		int partno = 0;
 		double amount;
 		try
 		{
-			loan_id = std::stoi(string[0]);
-			security_id = std::stoi(string[1]);
+			loan_id = string[0];
+			security_id = string[1];
 			amount = std::stod(string[2]);
 
 			if (use_partno)
@@ -885,14 +880,11 @@ std::vector<std::vector<loan_properties>> read_loans_as_csv(std::string datafile
 		if (global_io_verbose)
 		{
 			if (!use_partno)
-				print_output_to_stdout_and_file_txt("%d %d %lf\n", loan_id,  security_id, amount);
+				print_output_to_stdout_and_file_txt("%s %s %lf\n", loan_id.c_str(), security_id.c_str(), amount);
 			else
-				print_output_to_stdout_and_file_txt("%d %d %lf %d\n", loan_id, security_id, amount, partno);
+				print_output_to_stdout_and_file_txt("%s %s %lf %d\n", loan_id.c_str(), security_id.c_str(), amount, partno);
 		}
-		if (security_id >= (int)loans.size())
-		{
-			loans.resize(security_id + 1);
-		}
+
 		loans[security_id].push_back(loan_properties(loan_id, security_id, amount, partno));
 	}
 	file.close();
@@ -957,18 +949,18 @@ int get_words_number(std::string datafile)
 		return count_words_in_string(tmp);
 	}
 	else
-		if (get_extension(datafile) == "csv")
-		{
-			std::fstream file(datafile.c_str(), std::ios::in);
-			typedef std::vector<std::vector<std::string>> csvVector;
-			csvVector csvData;
-			readCSV(file, csvData);
-			return csvData[0].size();
-		}
+	if (get_extension(datafile) == "csv")
+	{
+		std::fstream file(datafile.c_str(), std::ios::in);
+		typedef std::vector<std::vector<std::string>> csvVector;
+		csvVector csvData;
+		readCSV(file, csvData);
+		return csvData[0].size();
+	}
 	return 0;
 }
 
-std::vector<std::vector<loan_pack_properties>> read_securities(std::string datafile)
+std::map<std::string, std::vector<loan_pack_properties>> read_securities(std::string datafile)
 {
 	std::string ext = get_extension(datafile);
 	if (global_io_verbose)
@@ -980,19 +972,19 @@ std::vector<std::vector<loan_pack_properties>> read_securities(std::string dataf
 		return read_securities_as_txt(datafile, use_partno);
 	}
 	else
-		if (ext == "csv")
-		{
-			bool use_partno = get_words_number(datafile) == 5 ? true : false;
-			return read_securities_as_csv(datafile, use_partno);
-		}
-		else
-		{
-			print_output_to_stdout_and_file_txt("Unsupported extension\n");
-			return std::vector<std::vector<loan_pack_properties>>();
-		}
+	if (ext == "csv")
+	{
+		bool use_partno = get_words_number(datafile) == 5 ? true : false;
+		return read_securities_as_csv(datafile, use_partno);
+	}
+	else
+	{
+		print_output_to_stdout_and_file_txt("Unsupported extension\n");
+		return std::map<std::string, std::vector<loan_pack_properties>>();
+	}
 }
 
-std::vector<std::vector<loan_properties>> read_loans(std::string datafile)
+std::map<std::string, std::vector<loan_properties>> read_loans(std::string datafile)
 {
 	std::string ext = get_extension(datafile);
 	if (global_io_verbose)
@@ -1004,30 +996,30 @@ std::vector<std::vector<loan_properties>> read_loans(std::string datafile)
 		return read_loans_as_txt(datafile, use_partno);
 	}
 	else
-		if (ext == "csv")
-		{
-			bool use_partno = get_words_number(datafile) == 4 ? true : false;
-			return read_loans_as_csv(datafile, use_partno);
-		}
-		else
-		{
-			print_output_to_stdout_and_file_txt("Unsupported extension\n");
-			return std::vector<std::vector<loan_properties>>();
-		}
+	if (ext == "csv")
+	{
+		bool use_partno = get_words_number(datafile) == 4 ? true : false;
+		return read_loans_as_csv(datafile, use_partno);
+	}
+	else
+	{
+		print_output_to_stdout_and_file_txt("Unsupported extension\n");
+		return std::map<std::string, std::vector<loan_properties>>();
+	}
 }
 
-void print_result_to_stdout(unsigned int /*i_security*/, const std::vector<loan_predicted_state_properties> &result)
+void print_result_to_stdout(const std::vector<loan_predicted_state_properties> &result)
 {
 	print_output_to_stdout_and_file_txt("\nResult:\n");
 	for (unsigned int i = 0; i < result.size(); ++i)
 	{
-		print_output_to_stdout_and_file_txt("%d: ", result[i].loan_id);
+		print_output_to_stdout_and_file_txt("%s: ", result[i].loan_id.c_str());
 		if (result[i].state.size())
 		{
 			for (unsigned int item = 0; item < result[i].state.size(); ++item)
 			{
 				print_output_to_stdout_and_file_txt("%s P = %.2lf;  ", result[i].state[item].c_str(), result[i].probability[item]);
-				print_output_to_stdout_and_file_csv("%d, %d, %s, %.2lf \n  ", result[i].loan_id, result[i].security_id, result[i].state[item].c_str(), result[i].probability[item]);
+				print_output_to_stdout_and_file_csv("%s, %s, %s, %.2lf \n  ", result[i].loan_id.c_str(), result[i].security_id.c_str(), result[i].state[item].c_str(), result[i].probability[item]);
 			}
 		}
 		else
@@ -1057,7 +1049,7 @@ configs read_config(std::string configfile)
 	std::fstream file(configfile.c_str(), std::ios::in);
 	if (!file.is_open())
 	{
-		printf("No such file or directory: %s\n", configfile.c_str ());
+		printf("No such file or directory: %s\n", configfile.c_str());
 		return cfg;
 	}
 
@@ -1078,53 +1070,53 @@ configs read_config(std::string configfile)
 					cfg.txt_output = value;
 				}
 				else
-					if (key == "csv_output")
-					{
-						cfg.csv_output = value;
-					}
+				if (key == "csv_output")
+				{
+					cfg.csv_output = value;
+				}
 				else
-					if (key == "securities")
-					{
-						cfg.securities = value;
-					}
+				if (key == "securities")
+				{
+					cfg.securities = value;
+				}
+				else
+				if (key == "loans")
+				{
+					cfg.loans = value;
+				}
+				else
+				if (key == "verbose")
+				{
+					if (value == "true" || value == "True")
+						cfg.verbose = 1;
 					else
-						if (key == "loans")
-						{
-							cfg.loans = value;
-						}
-						else
-							if (key == "verbose")
-							{
-								if (value == "true" || value == "True")
-									cfg.verbose = 1;
-								else
-									if (value == "false" || value == "False")
-										cfg.verbose = 0;
-							}
-							else
-								if (key == "sigma_error")
-								{
-									cfg.sigma_error = std::stod(value);
-								}
-								else
-									if (key == "epsilon")
-									{
-										cfg.epsilon = std::stod(value);
-									}
-									else
-										if (key == "scale")
-										{
-											cfg.scale = std::stoi(value);
-										}
-										else
-											if (key == "partsno-logic")
-											{
-												if (value == "true" || value == "True")
-													cfg.use_partno = 1;
-												else
-													if (value == "false" || value == "False")
-														cfg.use_partno = 0;
-											}
+					if (value == "false" || value == "False")
+						cfg.verbose = 0;
+				}
+				else
+				if (key == "sigma_error")
+				{
+					cfg.sigma_error = std::stod(value);
+				}
+				else
+				if (key == "epsilon")
+				{
+					cfg.epsilon = std::stod(value);
+				}
+				else
+				if (key == "scale")
+				{
+					cfg.scale = std::stoi(value);
+				}
+				else
+				if (key == "partsno-logic")
+				{
+					if (value == "true" || value == "True")
+						cfg.use_partno = 1;
+					else
+					if (value == "false" || value == "False")
+						cfg.use_partno = 0;
+				}
 			}
 		}
 	}
@@ -1169,17 +1161,21 @@ int main(int /*argc*/, char **/*argv*/)
 	global_io_verbose = cfg.verbose;
 
 
-	std::vector<std::vector<loan_pack_properties>> securities = read_securities(cfg.securities);
-	std::vector<std::vector<loan_properties>> loans = read_loans(cfg.loans);
+	std::map<std::string, std::vector<loan_pack_properties>> securities = read_securities(cfg.securities);
+	std::map<std::string, std::vector<loan_properties>> loans = read_loans(cfg.loans);
 	loans_matcher ln_mtch(cfg.scale, cfg.sigma_error, cfg.epsilon, cfg.use_partno);
 
-	int total_securities = std::min(securities.size(), loans.size());
-	for (int i_security = 0; i_security < total_securities; ++i_security)
+	for (std::map<std::string, std::vector<loan_pack_properties>>::iterator iter = securities.begin(); iter != securities.end(); ++iter)
 	{
-		if (!securities[i_security].size())
+		if (loans.find(iter->first) == loans.end())
+		{
 			continue;
-		print_output_to_stdout_and_file_txt("-----------------SECURITY %d---------------------\n\n", i_security);
-		print_result_to_stdout(i_security, ln_mtch.fit_predict(loans[i_security], securities[i_security], 0, cfg.verbose));
+		}
+
+		if (!securities[iter->first].size())
+			continue;
+		print_output_to_stdout_and_file_txt("-----------------SECURITY %s---------------------\n\n", iter->first.c_str());
+		print_result_to_stdout(ln_mtch.fit_predict(loans[iter->first], securities[iter->first], 0, cfg.verbose));
 		print_output_to_stdout_and_file_txt("\n\n");
 	}
 
