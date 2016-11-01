@@ -1,3 +1,4 @@
+#include "stdafx.h"
 #include <iostream>
 #include <stdio.h>
 #include <vector>
@@ -85,6 +86,40 @@ public:
     int partno = 0;
     std::string state;
 };
+
+void quick_sort (std::vector<loan_pack_properties> &loan_packs, std::vector<int> &perm, int first, int last)
+{
+    int i = first, j = last, x = loan_packs[(first + last) / 2].loan_count;
+
+    while (i <= j)
+    {
+        while (loan_packs[i].loan_count < x) i++;
+        while (loan_packs[j].loan_count > x) j--;
+
+        if(i <= j)
+        {
+            if (loan_packs[i].loan_count > loan_packs[j].loan_count)
+              {
+                auto temp = loan_packs[i];
+                loan_packs[i] = loan_packs[j];
+                loan_packs[j] = temp;
+
+                auto temp2 = perm[i];
+                perm[i] = perm[j];
+                perm[j] = temp2;
+              }
+            i++;
+            j--;
+        }
+    }
+
+    if (i < last)
+        quick_sort(loan_packs, perm,  i, last);
+    if (first < j)
+        quick_sort(loan_packs, perm,  first, j);
+}
+
+
 
 class loan_properties
 {
@@ -233,22 +268,33 @@ private:
     void get_all_possible_loans_for_amount_packs(const std::vector<loan_pack_properties> &loan_pack_props, const std::vector<loan_properties> &loan_props)
     {
         loan_sums.resize(loan_pack_props.size());
+
+        std::vector<loan_pack_properties> sorted_loan_pack_props = loan_pack_props;
+        std::vector<int> perm;
+        perm.resize (loan_pack_props.size ());
+        for (int i = 0; i < perm.size (); ++i)
+          {
+            perm[i] = i;
+          }
+
+        quick_sort (sorted_loan_pack_props, perm, 0, sorted_loan_pack_props.size () - 1);
+
         if (!use_partno)
         {
-            for (int i = 0; i < loan_pack_props.size(); ++i)
+            for (int i = 0; i < sorted_loan_pack_props.size(); ++i)
             {
-                const loan_pack_properties &loan_pack = loan_pack_props[i];
-                loan_sums[i] = get_loans_for_total_amount(amount_range(loan_pack.amount), loan_pack.loan_count, loan_pack.amount, loan_props);
+                const loan_pack_properties &loan_pack = sorted_loan_pack_props[i];
+                loan_sums[perm[i]] = get_loans_for_total_amount(amount_range(loan_pack.amount), loan_pack.loan_count, loan_pack.amount, loan_props);
             }
         }
         else
         {
-            for (int i = 0; i < loan_pack_props.size(); ++i)
+            for (int i = 0; i < sorted_loan_pack_props.size(); ++i)
             {
-                const loan_pack_properties &loan_pack = loan_pack_props[i];
+                const loan_pack_properties &loan_pack = sorted_loan_pack_props[i];
                 std::vector<int> range;
                 range.push_back(loan_pack.partno);
-                loan_sums[i] = get_loans_for_total_amount(range, loan_pack.loan_count, loan_pack.amount, loan_props);
+                loan_sums[perm[i]] = get_loans_for_total_amount(range, loan_pack.loan_count, loan_pack.amount, loan_props);
             }
         }
     }
