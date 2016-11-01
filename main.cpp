@@ -118,11 +118,12 @@ class loans_matcher
     };
 
 public:
-    loans_matcher(int scale = 0, double sigma_error = 0.5, double epsilon = 1e-6, int use_partno = false) :
+    loans_matcher(int scale = 0, double sigma_error = 0.5, double epsilon = 1e-6, int use_partno = false, bool naive = false) :
         scale(scale),
         sigma_error(sigma_error),
         epsilon(epsilon),
-        use_partno(use_partno)
+        use_partno(use_partno),
+        naive(naive)
     {
         scale_set_by_user = scale > 0 ? true : false;
     }
@@ -150,6 +151,12 @@ public:
         {
             if (use_partno)
                 print_output_to_stdout_and_file_txt("Use partsno-logic!!\n");
+        }
+
+        if (verbose)
+        {
+            if (naive)
+                print_output_to_stdout_and_file_txt("Use naive-logic!!\n");
         }
 
         if (!use_partno)
@@ -204,7 +211,9 @@ private:
     double epsilon;
 
     bool use_partno;
+    bool naive;
     bool scale_set_by_user;
+
 
     std::unique_ptr<matrix_item[]> matrix;
     std::vector<int> loan_values;
@@ -569,12 +578,12 @@ private:
     {
         if (current_sum < 0 || current_sum >= (int)max_possible_total_amount)
             return;
-        if (result.size ())
-            return;
+        if (naive && result.size ())
+          return;
 
         matrix_item &current_item = matrix[i_current_loan * max_possible_total_amount + current_sum];
 
-        if (!current_item.has_sum || (int)(size - current_path.size ()) > i_current_loan)
+        if (!current_item.has_sum || size - current_path.size () > i_current_loan + 1)
             return;
 
         current_path.push_back (i_current_loan);
@@ -589,16 +598,19 @@ private:
               if (fabs (sum - valid_amount) < epsilon)
                 {
                   result.push_back (current_path);
-                  for (auto i : current_path)
+                  if (naive)
                     {
-                      loans_used[i] = true;
+                      for (auto i : current_path)
+                        {
+                          loans_used[i] = true;
+                        }
                     }
                 }
             }
 
         for (int prev_loan_i : current_item.previous_indices)
         {
-            if (loans_used[prev_loan_i])
+            if (naive && loans_used[prev_loan_i])
               continue;
 
             get_all_paths(result, current_path, current_sum - loan_values[i_current_loan], prev_loan_i, size, valid_amount, loan_props);
@@ -1078,6 +1090,7 @@ struct configs
     double epsilon = 1e-6;
     int scale = 70;
     int use_partno = 0;
+    bool naive = false;
     std::string securities = "securities.csv";
     std::string loans = "loans.csv";
     std::string csv_output = "sec_loan_out.csv";
@@ -1159,6 +1172,15 @@ configs read_config(std::string configfile)
                     if (value == "false" || value == "False")
                         cfg.use_partno = 0;
                 }
+                 else
+                if (key == "naive")
+                {
+                    if (value == "true" || value == "True")
+                        cfg.naive = 1;
+                    else
+                    if (value == "false" || value == "False")
+                        cfg.naive = 0;
+                }
             }
         }
     }
@@ -1204,7 +1226,7 @@ int main(int /*argc*/, char **/*argv*/)
 
     std::map<std::string, std::vector<loan_pack_properties>> securities = read_securities(cfg.securities);
     std::map<std::string, std::vector<loan_properties>> loans = read_loans(cfg.loans);
-    loans_matcher ln_mtch(cfg.scale, cfg.sigma_error, cfg.epsilon, cfg.use_partno);
+    loans_matcher ln_mtch(cfg.scale, cfg.sigma_error, cfg.epsilon, cfg.use_partno, cfg.naive);
 
     for (std::map<std::string, std::vector<loan_pack_properties>>::iterator iter = securities.begin(); iter != securities.end(); ++iter)
     {
