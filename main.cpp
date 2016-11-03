@@ -137,7 +137,17 @@ public:
 
 class loan_predicted_state_properties
 {
+
+
 public:
+    loan_predicted_state_properties (const loan_properties &a)
+    {
+      loan_id = a.loan_id;
+      security_id = a.security_id;
+    }
+    loan_predicted_state_properties ()
+    {
+    }
     std::string loan_id;
     std::string security_id;
     std::vector<std::string> state;
@@ -153,17 +163,20 @@ class loans_matcher
     };
 
 public:
-    loans_matcher(int scale = 0, double sigma_error = 0.5, double epsilon = 1e-6, int use_partno = false, bool naive = false) :
+    loans_matcher(int scale = 0, int max_iteration = 10000000, double sigma_error = 0.5, double epsilon = 1e-6, int use_partno = false, bool naive = false, bool stages = false) :
         scale(scale),
+        max_iteration(max_iteration),
         sigma_error(sigma_error),
         epsilon(epsilon),
         use_partno(use_partno),
-        naive(naive)
+        naive(naive),
+        stages(stages)
     {
         scale_set_by_user = scale > 0 ? true : false;
     }
 
-    std::vector<loan_predicted_state_properties> fit_predict(
+
+    std::vector<loan_predicted_state_properties> fit_predict_func(
         const std::vector<loan_properties> &loan_props,
         const std::vector<loan_pack_properties> &loan_pack_props,
         bool debug_flag = false,
@@ -173,7 +186,8 @@ public:
 
         if (verbose)
         {
-            print_output_to_stdout_and_file_txt("Total loans in security: %d\n\n", loan_props.size());
+            print_output_to_stdout_and_file_txt("Total loans in security: %d\n", loan_props.size());
+            print_output_to_stdout_and_file_txt("Total loan sums in security: %d\n\n", loan_pack_props.size());
         }
 
         if (verbose)
@@ -224,7 +238,7 @@ public:
             print_output_to_stdout_and_file_txt("Building solution\n");
 
 
-        get_all_possible_loans_for_amount_packs(loan_pack_props, loan_props);
+        get_all_possible_loans_for_amount_packs(verbose, loan_pack_props, loan_props);
 
         if (verbose)
             print_output_to_stdout_and_file_txt("Checking solution\n");
@@ -237,16 +251,105 @@ public:
         return create_output(loan_props, loan_pack_props);
     }
 
+
+    std::vector<loan_predicted_state_properties> fit_predict(
+        const std::vector<loan_properties> &loan_props,
+        const std::vector<loan_pack_properties> &loan_pack_props,
+        bool debug_flag = false,
+        bool verbose = false)
+    {
+      if (stages)
+      {
+        std::vector<loan_predicted_state_properties> output;
+        for (const auto &loan : loan_props)
+        {
+          output.push_back (loan_predicted_state_properties(loan));
+        }
+
+        std::vector<int> stages_separation;
+        stages_separation.push_back (0);
+        stages_separation.push_back (4);
+        stages_separation.push_back (6);
+        stages_separation.push_back (8);
+        stages_separation.push_back (12);
+        stages_separation.push_back (1000);
+
+        std::vector<loan_properties> loan_props_left = loan_props;
+        for (unsigned int i_stage = 0; i_stage < stages_separation.size () - 1; ++i_stage)
+        {
+            if (verbose)
+                print_output_to_stdout_and_file_txt("Stage %d!(%d - %d)\n", i_stage + 1, stages_separation[i_stage], stages_separation[i_stage + 1]);
+
+             std::vector<loan_pack_properties> loan_pack_props_small_loan_count;
+             for (const auto &loan_pack : loan_pack_props)
+             {
+               if (loan_pack.loan_count >= stages_separation[i_stage] && loan_pack.loan_count < stages_separation[i_stage + 1])
+               {
+                 loan_pack_props_small_loan_count.push_back (loan_pack);
+               }
+             }
+
+             if (loan_pack_props_small_loan_count.empty() || loan_props_left.empty ())
+               {
+                if (verbose)
+                  print_output_to_stdout_and_file_txt("Nothing to do! No loans or no sums! \n");
+                continue;
+               }
+
+             merge_results (output, fit_predict_func (loan_props_left, loan_pack_props_small_loan_count, debug_flag, verbose));
+
+             loan_props_left.clear ();
+             for (const auto &predicted_loan : output)
+             {
+               if (predicted_loan.state.empty ())
+               {
+                 for (const auto &loan_prop : loan_props)
+                 {
+                   if (loan_prop.loan_id == predicted_loan.loan_id)
+                   {
+                     loan_props_left.push_back (loan_prop);
+                   }
+                 }
+               }
+             }
+         }
+         return output;
+      }
+      else
+      {
+        return fit_predict_func (loan_props, loan_pack_props, debug_flag, verbose);
+      }
+    }
+
+  void merge_results (std::vector<loan_predicted_state_properties> &result_main, std::vector<loan_predicted_state_properties> result_second)
+  {
+    for (auto &i_loan: result_main)
+    {
+      if (i_loan.state.empty ())
+      {
+        for (const auto &j_loan : result_second)
+        {
+          if (j_loan.loan_id == i_loan.loan_id && !j_loan.state.empty ())
+          {
+            i_loan = j_loan;
+          }
+        }
+      }
+    }
+  }
+
 private:
     /// model properties
     unsigned int max_possible_total_amount;
     int sigma;
     int scale;
+    int max_iteration;
     double sigma_error;
     double epsilon;
 
     bool use_partno;
     bool naive;
+    bool stages;
     bool scale_set_by_user;
 
 
@@ -265,7 +368,7 @@ private:
         return (int)(price + 0.5);
     }
 
-    void get_all_possible_loans_for_amount_packs(const std::vector<loan_pack_properties> &loan_pack_props, const std::vector<loan_properties> &loan_props)
+    void get_all_possible_loans_for_amount_packs(int verbose, const std::vector<loan_pack_properties> &loan_pack_props, const std::vector<loan_properties> &loan_props)
     {
         loan_sums.resize(loan_pack_props.size());
 
@@ -284,7 +387,7 @@ private:
             for (int i = 0; i < sorted_loan_pack_props.size(); ++i)
             {
                 const loan_pack_properties &loan_pack = sorted_loan_pack_props[i];
-                loan_sums[perm[i]] = get_loans_for_total_amount(amount_range(loan_pack.amount), loan_pack.loan_count, loan_pack.amount, loan_props);
+                loan_sums[perm[i]] = get_loans_for_total_amount(verbose, amount_range(loan_pack.amount), loan_pack.loan_count, loan_pack.amount, loan_props);
             }
         }
         else
@@ -294,7 +397,7 @@ private:
                 const loan_pack_properties &loan_pack = sorted_loan_pack_props[i];
                 std::vector<int> range;
                 range.push_back(loan_pack.partno);
-                loan_sums[perm[i]] = get_loans_for_total_amount(range, loan_pack.loan_count, loan_pack.amount, loan_props);
+                loan_sums[perm[i]] = get_loans_for_total_amount(verbose, range, loan_pack.loan_count, loan_pack.amount, loan_props);
             }
         }
     }
@@ -597,9 +700,11 @@ private:
         }
     }
 
-    std::vector<std::vector<int>> get_loans_for_total_amount(std::vector<int> total_amounts, int size, double valid_amount, const std::vector<loan_properties> &loan_props)
+    std::vector<std::vector<int>> get_loans_for_total_amount(int verbose, std::vector<int> total_amounts, int size, double valid_amount, const std::vector<loan_properties> &loan_props)
     {
         std::vector<std::vector<int>> result;
+
+        int iteration = 0;
         for (auto amount : total_amounts)
         {
             for (unsigned int i_loan = 0; i_loan < loan_values.size(); ++i_loan)
@@ -607,10 +712,20 @@ private:
                 matrix_item &current_item = matrix[i_loan * max_possible_total_amount + amount];
                 if (current_item.has_sum)
                 {
-                    get_all_paths(result, std::vector<int>(), amount, i_loan, size, valid_amount, loan_props);
+                    get_all_paths(result, std::vector<int>(), amount, i_loan, size, valid_amount, iteration, loan_props);
                 }
             }
         }
+        if (verbose)
+          {
+            if (iteration >= max_iteration)
+              print_output_to_stdout_and_file_txt ("Iterations threshold reached(it = %d)!\n", iteration);
+
+              if (result.empty())
+              {
+                print_output_to_stdout_and_file_txt ("Loans not found for amount %lf\n", valid_amount);
+              }
+          }
         return result;
     }
 
@@ -620,10 +735,13 @@ private:
         int i_current_loan,
         unsigned int size,
         double valid_amount,
+        int &iteration,
         const std::vector<loan_properties> &loan_props)
     {
-        if (current_sum < 0 || current_sum >= (int)max_possible_total_amount)
+        if (current_sum < 0 || current_sum >= (int)max_possible_total_amount || iteration > max_iteration)
             return;
+
+        iteration++;
         if (naive && result.size ())
           return;
 
@@ -659,7 +777,7 @@ private:
             if (naive && loans_used[prev_loan_i])
               continue;
 
-            get_all_paths(result, current_path, current_sum - loan_values[i_current_loan], prev_loan_i, size, valid_amount, loan_props);
+            get_all_paths(result, current_path, current_sum - loan_values[i_current_loan], prev_loan_i, size, valid_amount, iteration, loan_props);
         }
     }
 
@@ -1135,8 +1253,10 @@ struct configs
     double sigma_error = 0.5;
     double epsilon = 1e-6;
     int scale = 70;
+    int max_iteration = 10000000;
     int use_partno = 0;
     bool naive = false;
+    bool stages = false;
     std::string securities = "securities.csv";
     std::string loans = "loans.csv";
     std::string csv_output = "sec_loan_out.csv";
@@ -1210,6 +1330,11 @@ configs read_config(std::string configfile)
                     cfg.scale = std::stoi(value);
                 }
                 else
+                if (key == "max_iteration")
+                {
+                    cfg.max_iteration = std::stoi(value);
+                }
+                else
                 if (key == "partsno-logic")
                 {
                     if (value == "true" || value == "True")
@@ -1218,7 +1343,7 @@ configs read_config(std::string configfile)
                     if (value == "false" || value == "False")
                         cfg.use_partno = 0;
                 }
-                 else
+                else
                 if (key == "naive")
                 {
                     if (value == "true" || value == "True")
@@ -1226,6 +1351,15 @@ configs read_config(std::string configfile)
                     else
                     if (value == "false" || value == "False")
                         cfg.naive = 0;
+                }
+                else
+                if (key == "stages")
+                {
+                    if (value == "true" || value == "True")
+                        cfg.stages = 1;
+                    else
+                    if (value == "false" || value == "False")
+                        cfg.stages = 0;
                 }
             }
         }
@@ -1272,7 +1406,7 @@ int main(int /*argc*/, char **/*argv*/)
 
     std::map<std::string, std::vector<loan_pack_properties>> securities = read_securities(cfg.securities);
     std::map<std::string, std::vector<loan_properties>> loans = read_loans(cfg.loans);
-    loans_matcher ln_mtch(cfg.scale, cfg.sigma_error, cfg.epsilon, cfg.use_partno, cfg.naive);
+    loans_matcher ln_mtch(cfg.scale, cfg.max_iteration, cfg.sigma_error, cfg.epsilon, cfg.use_partno, cfg.naive, cfg.stages);
 
     for (std::map<std::string, std::vector<loan_pack_properties>>::iterator iter = securities.begin(); iter != securities.end(); ++iter)
     {
