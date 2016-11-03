@@ -512,7 +512,7 @@ private:
         loan_sums.clear();
         loan_mapping.clear();
         allocated_memory_size = 0;
-        matrix.release();
+        matrix.reset(nullptr);
     }
 
     void print_loan_amounts(
