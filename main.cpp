@@ -163,10 +163,11 @@ class loans_matcher
 	};
 
 public:
-	loans_matcher(int scale = 0, long long int max_iteration = 10000000, double time_limit = 10., double sigma_error = 0.5, double epsilon = 1e-6, int use_partno = false, bool naive = false, bool stages = false) :
+	loans_matcher(int scale = 0, long long int max_iteration = 10000000, double time_limit = 10., int loans_limit = 150, double sigma_error = 0.5, double epsilon = 1e-6, int use_partno = false, bool naive = false, bool stages = false) :
 		scale(scale),
 		max_iteration(max_iteration),
 		time_limit(time_limit),
+		loans_limit(loans_limit),
 		sigma_error(sigma_error),
 		epsilon(epsilon),
 		use_partno(use_partno),
@@ -190,6 +191,11 @@ public:
 		{
 			print_output_to_stdout_and_file_txt("Total loans in security: %d\n", loan_props.size());
 			print_output_to_stdout_and_file_txt("Total loan sums in security: %d\n\n", loan_pack_props.size());
+			if (loan_props.size() > loans_limit)
+			{
+				print_output_to_stdout_and_file_txt("Loans limit exceeded! Skipping! %d\n", loans_limit);
+				return std::vector<loan_predicted_state_properties> ();
+			}
 		}
 
 		if (verbose)
@@ -353,6 +359,7 @@ private:
 	int scale;
 	long long int max_iteration;
 	double time_limit;
+	int loans_limit;
 	double sigma_error;
 	double epsilon;
 
@@ -1287,6 +1294,7 @@ struct configs
 	bool naive = false;
 	bool stages = false;
 	double time_limit = 10.;
+	int loans_limit = 150;
 	std::string securities = "securities.csv";
 	std::string loans = "loans.csv";
 	std::string csv_output = "sec_loan_out.csv";
@@ -1396,6 +1404,11 @@ configs read_config(std::string configfile)
 																{
 																	cfg.time_limit = std::stod(value);
 																}
+																else
+																	if (key == "loans_limit")
+																	{
+																		cfg.loans_limit = std::stoi(value);
+																	}
 			}
 		}
 	}
@@ -1441,7 +1454,7 @@ int main(int /*argc*/, char **/*argv*/)
 
 	std::map<std::string, std::vector<loan_pack_properties>> securities = read_securities(cfg.securities);
 	std::map<std::string, std::vector<loan_properties>> loans = read_loans(cfg.loans);
-	loans_matcher ln_mtch(cfg.scale, cfg.max_iteration, cfg.time_limit, cfg.sigma_error, cfg.epsilon, cfg.use_partno, cfg.naive, cfg.stages);
+	loans_matcher ln_mtch(cfg.scale, cfg.max_iteration, cfg.time_limit, cfg.loans_limit, cfg.sigma_error, cfg.epsilon, cfg.use_partno, cfg.naive, cfg.stages);
 
 	for (std::map<std::string, std::vector<loan_pack_properties>>::iterator iter = securities.begin(); iter != securities.end(); ++iter)
 	{
