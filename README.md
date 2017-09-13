@@ -1,5 +1,5 @@
 # Loan matcher
-NP-Complex [https://en.wikipedia.org/wiki/Subset_sum_problem Subset problem] for loans.
+[Subset problem](https://en.wikipedia.org/wiki/Subset_sum_problem)  for loans.
 
 We know how much loans belong to State, total price of loans and price of each loan. 
 
